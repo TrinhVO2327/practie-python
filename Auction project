@@ -1,0 +1,92 @@
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship, sessionmaker
+import datetime
+
+# Define the base class for declarative models
+Base = declarative_base()
+
+# Define the User model
+class User(Base):
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    username = Column(String, nullable=False)
+    password = Column(String, nullable=False)
+
+    # One user can auction multiple items
+    items = relationship("Item", back_populates="owner")
+
+    # One user can place multiple bids
+    bids = relationship("Bid", back_populates="bidder")
+
+# Define the Item model
+class Item(Base):
+    __tablename__ = 'items'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    start_time = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Link to the user who is auctioning the item
+    owner_id = Column(Integer, ForeignKey('users.id'))
+    
+    # Relationship - an item is owned by a user
+    owner = relationship("User", back_populates="items")
+    
+    # An item can have multiple bids
+    bids = relationship("Bid", back_populates="item")
+
+# Define the Bid model
+class Bid(Base):
+    __tablename__ = 'bids'
+    
+    id = Column(Integer, primary_key=True)
+    price = Column(Float, nullable=False)
+    
+    # Link to the user who placed the bid
+    bidder_id = Column(Integer, ForeignKey('users.id'))
+    
+    # Link to the item being bid on
+    item_id = Column(Integer, ForeignKey('items.id'))
+    
+    # Relationships
+    bidder = relationship("User", back_populates="bids")
+    item = relationship("Item", back_populates="bids")
+
+# Database setup: Connect to the PostgreSQL database
+DATABASE_URL = "postgresql://username:password@localhost:5432/auction"  
+engine = create_engine(DATABASE_URL)
+Base.metadata.create_all(engine)
+
+# Create a session to interact with the database
+Session = sessionmaker(bind=engine)
+session = Session()
+
+# Add users to the database
+user1 = User(username="Alice", password="password1")
+user2 = User(username="Bob", password="password2")
+user3 = User(username="Charlie", password="password3")
+session.add_all([user1, user2, user3])
+session.commit()
+
+# User1 auctions a baseball
+baseball = Item(name="Baseball", description="Signed baseball", owner=user1)
+session.add(baseball)
+session.commit()
+
+# Other users place bids on the baseball
+bid1 = Bid(price=100.0, bidder=user2, item=baseball)
+bid2 = Bid(price=150.0, bidder=user2, item=baseball)
+bid3 = Bid(price=120.0, bidder=user3, item=baseball)
+bid4 = Bid(price=180.0, bidder=user3, item=baseball)
+session.add_all([bid1, bid2, bid3, bid4])
+session.commit()
+
+# Query to find the highest bid
+highest_bid = session.query(Bid).filter(Bid.item == baseball).order_by(Bid.price.desc()).first()
+print(f"The highest bid is {highest_bid.price} by user {highest_bid.bidder.username}")
+
+# Close the session
+session.close()
